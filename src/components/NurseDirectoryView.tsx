@@ -84,7 +84,7 @@ export const NurseDirectoryView: React.FC<NurseDirectoryViewProps> = ({
   // Export CSV
   const handleExportCSV = () => {
     const headers = [
-      'PPR', 'CNI', 'Nom', 'Prenom', 'Specialite', 'Fonction',
+      'PPR', 'CNI', 'Nom', 'Prenom', 'Sexe', 'Grossesse', 'Specialite', 'Fonction',
       'Date_Naissance', 'Lieu_Naissance', 'Etat_Marital', 'Enfants',
       'Grade', 'Date_Recrutement', 'Anciennete', 'Statut_Fonction_Publique',
       'Residence', 'Navette', 'Trajet_Navette',
@@ -103,6 +103,8 @@ export const NurseDirectoryView: React.FC<NurseDirectoryViewProps> = ({
         `"${n.cni}"`,
         `"${n.nom}"`,
         `"${n.prenom}"`,
+        `"${n.sexe || 'Non précisé'}"`,
+        `"${n.enceinte ? 'Enceinte (Congé Maternité 90j)' : 'Non'}"`,
         `"${n.specialite}"`,
         `"${n.fonction}"`,
         `"${n.dateNaissance}"`,
@@ -316,13 +318,24 @@ export const NurseDirectoryView: React.FC<NurseDirectoryViewProps> = ({
                           className="font-bold text-slate-900 hover:text-teal-700 cursor-pointer flex items-center gap-1.5"
                         >
                           <span>{nurse.nom} {nurse.prenom}</span>
+                          <span className={`text-[10px] px-1.5 py-0.2 rounded font-semibold ${
+                            nurse.sexe === 'Femme' 
+                              ? 'bg-pink-50 text-pink-700 border border-pink-200' 
+                              : 'bg-blue-50 text-blue-700 border border-blue-200'
+                          }`}>
+                            {nurse.sexe || 'Agent'}
+                          </span>
                         </div>
                         <div className="text-[11px] text-teal-800 font-medium">
-                          {nurse.specialite}
+                          {nurse.specialite} · {nurse.fonction}
                         </div>
-                        <div className="text-[11px] text-slate-500">
-                          {nurse.fonction}
-                        </div>
+                        {nurse.sexe === 'Femme' && nurse.etatMarital === 'Marié(e)' && nurse.enceinte && (
+                          <div className="mt-1">
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-purple-800 bg-purple-50 px-1.5 py-0.5 rounded border border-purple-200">
+                              Enceinte (Maternité 90j)
+                            </span>
+                          </div>
+                        )}
                       </td>
 
                       {/* PPR & CNI */}

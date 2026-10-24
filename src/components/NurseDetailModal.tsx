@@ -5,7 +5,6 @@ import {
   Briefcase, 
   Calendar, 
   MapPin, 
-  Phone, 
   Mail, 
   FileText, 
   Printer, 
@@ -15,7 +14,8 @@ import {
   ShieldCheck, 
   Clock, 
   Baby, 
-  Home
+  Home,
+  CheckCircle2
 } from 'lucide-react';
 import { NurseStaff, DemandeConge } from '../types/nurse';
 import { 
@@ -161,6 +161,19 @@ export const NurseDetailModal: React.FC<NurseDetailModalProps> = ({
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
               <div>
+                <span className="text-slate-400 block">Sexe de l'agent:</span>
+                <span className="font-semibold text-slate-800 flex items-center gap-1.5 mt-0.5">
+                  <span className={`px-2 py-0.5 rounded text-xs font-bold ${
+                    nurse.sexe === 'Femme'
+                      ? 'bg-pink-100 text-pink-800 border border-pink-200'
+                      : 'bg-blue-100 text-blue-800 border border-blue-200'
+                  }`}>
+                    {nurse.sexe || 'Non renseigné'}
+                  </span>
+                </span>
+              </div>
+
+              <div>
                 <span className="text-slate-400 block">Date et Lieu de Naissance:</span>
                 <span className="font-semibold text-slate-800">
                   {formatDateFr(nurse.dateNaissance, 'long')} à {nurse.lieuNaissance || '-'}
@@ -179,6 +192,46 @@ export const NurseDetailModal: React.FC<NurseDetailModalProps> = ({
                   {nurse.nombreEnfants} enfant{nurse.nombreEnfants > 1 ? 's' : ''} à charge
                 </span>
               </div>
+
+              {/* Si Femme + Mariée : Affichage grossesse et congé de maternité 90 jours */}
+              {nurse.sexe === 'Femme' && nurse.etatMarital === 'Marié(e)' && (
+                <div className="md:col-span-3 bg-purple-50/70 border border-purple-200 rounded-lg p-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-xs text-purple-950 flex items-center gap-1.5">
+                      <Baby className="w-4 h-4 text-purple-700" />
+                      Condition Statutaire : Agent Femme Mariée
+                    </span>
+                    <span className={`px-2 py-0.5 rounded text-xs font-bold ${
+                      nurse.enceinte
+                        ? 'bg-purple-200 text-purple-900'
+                        : 'bg-slate-200 text-slate-700'
+                    }`}>
+                      {nurse.enceinte ? 'Enceinte' : 'Non enceinte'}
+                    </span>
+                  </div>
+
+                  {nurse.enceinte && nurse.congeMaternite && (
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-2 border-t border-purple-200/60 text-[11px]">
+                      <div className="bg-white p-2 rounded border border-purple-200">
+                        <span className="text-slate-500 block">Durée Réglementaire:</span>
+                        <span className="font-bold text-purple-950 text-xs">90 jours statutaires</span>
+                      </div>
+                      <div className="bg-white p-2 rounded border border-purple-200">
+                        <span className="text-slate-500 block">Date de cessation:</span>
+                        <span className="font-mono font-bold text-slate-800 text-xs">
+                          {formatDateFr(nurse.congeMaternite.dateCessation) || 'Non définie'}
+                        </span>
+                      </div>
+                      <div className="bg-white p-2 rounded border border-purple-200">
+                        <span className="text-slate-500 block">Date de reprise prévue:</span>
+                        <span className="font-mono font-bold text-teal-800 text-xs">
+                          {formatDateFr(nurse.congeMaternite.dateReprise) || 'Non définie'}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div>
                 <span className="text-slate-400 block">Lieu de Résidence:</span>

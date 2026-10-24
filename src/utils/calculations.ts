@@ -1,4 +1,5 @@
 import { NurseStaff, DemandeConge, ReminderItem } from '../types/nurse';
+import { calculateWorkingDays } from './moroccanHolidays';
 
 /**
  * Calcule l'ancienneté en années et mois à partir de la date de recrutement.
@@ -96,6 +97,27 @@ export function getSoldeCongeMaladie(nurse: NurseStaff): {
     restant,
     pourcentageUtilise
   };
+}
+
+/**
+ * Calcule la durée d'un congé selon son type :
+ * - Congé Administratif : Jours ouvrables stricts (sans samedis, dimanches ni jours fériés marocains)
+ * - Congé de Maternité : 90 jours calendaires statutaires
+ * - Autres congés (Maladie, etc.) : Jours calendaires inclusifs
+ */
+export function calculateLeaveDays(typeConge: string, startDate: string, endDate: string): number {
+  if (!startDate || !endDate) return 0;
+  
+  if (typeConge === 'Congé Administratif') {
+    return calculateWorkingDays(startDate, endDate);
+  }
+  
+  if (typeConge.includes('Maternité')) {
+    const diff = calculateDaysBetween(startDate, endDate);
+    return diff > 0 ? diff : 90;
+  }
+
+  return calculateDaysBetween(startDate, endDate);
 }
 
 /**
@@ -242,12 +264,45 @@ export function generateReminders(nurses: NurseStaff[], demandes: DemandeConge[]
         });
       }
     }
+    // 4. Demandes prévisionnelles du mois en cours à confirmer ou annuler
+    if (demande.statutPrevisionnel === 'prevu_a_confirmer') {
+      reminders.push({
+        id: `prev-confirm-${demande.id}`,
+        type: 'reprise_imminente',
+        niveau: 'attention',
+        titre: `Début de mois : Demande prévisionnelle à confirmer`,
+        message: `${nomComplet} a un congé prévisionnel (${demande.typeConge}, ${demande.nombreJours}j) prévu le ${formatDateFr(demande.dateCessation)}. Confirmer ou annuler la demande initiale.`,
+        nurseId: nurse.id,
+        demandeId: demande.id,
+        dateCible: demande.dateCessation,
+        actionPossible: 'confirmer_demande_debut_mois'
+      });
+    }
   });
 
-  // 4. Alertes sur les soldes critiques des infirmiers
+  // 5. Alertes sur les soldes critiques et maternité des infirmiers
   nurses.forEach(nurse => {
     const admin = getSoldeCongeAdmin(nurse);
     const maladie = getSoldeCongeMaladie(nurse);
+
+    // Congé Maternité programmé
+    if (nurse.sexe === 'Femme' && nurse.etatMarital === 'Marié(e)' && nurse.enceinte && nurse.congeMaternite?.dateCessation) {
+      const cessationMat = new Date(nurse.congeMaternite.dateCessation);
+      cessationMat.setHours(0, 0, 0, 0);
+      const diffMat = Math.round((cessationMat.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+      if (diffMat >= 0 && diffMat <= 15) {
+        reminders.push({
+          id: `maternite-bientot-${nurse.id}`,
+          type: 'maternite_imminente',
+          niveau: diffMat <= 3 ? 'urgent' : 'attention',
+          titre: `Congé de maternité imminent (90 jours)`,
+          message: `${nurse.nom} ${nurse.prenom} débutera son congé de maternité le ${formatDateFr(nurse.congeMaternite.dateCessation)} (reprise prévue le ${formatDateFr(nurse.congeMaternite.dateReprise)}).`,
+          nurseId: nurse.id,
+          dateCible: nurse.congeMaternite.dateCessation,
+          actionPossible: 'voir_agent'
+        });
+      }
+    }
 
     // Reliquat élevé non consommé
     if (admin.reporte >= 15) {

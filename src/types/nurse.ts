@@ -5,19 +5,21 @@ export type Specialite =
   | 'IBO';
 
 export type Fonction = 
+  | 'Infirmier chef'
   | 'Anesthésiste' 
   | 'Aide-opératoire' 
   | 'Panseur' 
   | 'Stérilisation';
 
+export type Sexe = 'Femme' | 'Homme';
+
 export type EtatMarital = 'Célibataire' | 'Marié(e)' | 'Divorcé(e)' | 'Veuf(ve)';
 
 export type Grade = 
-  | 'Infirmier 2ème Grade' 
-  | 'Infirmier 1er Grade' 
-  | 'Infirmier Principal' 
-  | 'Infirmier en Chef' 
-  | 'Cadre Supérieur de Santé';
+  | 'Grade 1' 
+  | 'Grade 2' 
+  | 'Grade principal' 
+  | 'Grade exceptionnel';
 
 export type EtatFonctionPublique = 
   | 'Fonctionnaire Titulaire' 
@@ -31,13 +33,14 @@ export type SituationActuelle =
   | 'Système de garde' 
   | 'Congé administratif' 
   | 'Congé de maladie' 
+  | 'Congé de maternité'
   | 'Congé exceptionnel' 
   | 'Mis en disponibilité' 
   | 'Sous drapeau';
 
 export interface CongeAdminData {
-  limiteAnnuelle: number; // Toujours 22 jours par défaut
-  joursReportes: number; // Reliquat de l'année précédente
+  limiteAnnuelle: number; // 22 jours ouvrables (hors week-ends et jours fériés)
+  joursReportes: number; // Reliquat de l'année précédente reporté sur la nouvelle année
   joursConsommes: number;
 }
 
@@ -46,10 +49,18 @@ export interface CongeMaladieData {
   joursConsommes: number;
 }
 
+export interface CongeMaterniteData {
+  dateCessation: string;
+  dateReprise: string;
+  dureeJours: 90; // Fixé statutairement à 90 jours
+  actif: boolean;
+}
+
 export interface NurseStaff {
   id: string;
   nom: string;
   prenom: string;
+  sexe: Sexe; // Femme / Homme
   ppr: string; // Numéro de Poste Budgétaire / Matricule financier
   cni: string; // Numéro de Carte Nationale d'Identité
   specialite: Specialite;
@@ -57,8 +68,10 @@ export interface NurseStaff {
   dateNaissance: string; // YYYY-MM-DD
   lieuNaissance: string;
   etatMarital: EtatMarital;
+  enceinte?: boolean; // Condition: si Femme + Mariée
+  congeMaternite?: CongeMaterniteData; // Si enceinte (90 jours)
   nombreEnfants: number;
-  grade: Grade;
+  grade: Grade; // Grade 1, Grade 2, Grade principal, Grade exceptionnel
   dateRecrutement: string; // YYYY-MM-DD
   etatFonctionPublique: EtatFonctionPublique;
   lieuResidence: string;
@@ -74,6 +87,7 @@ export interface NurseStaff {
 export type TypeConge = 
   | 'Congé Administratif' 
   | 'Congé de Maladie' 
+  | 'Congé de Maternité (90 jours)'
   | 'Congé Exceptionnel' 
   | 'Maternité / Paternité' 
   | 'Pèlerinage' 
@@ -91,23 +105,26 @@ export interface DemandeConge {
   dateCessation: string; // Date de départ effectif / cessation
   dateReprisePrevue: string; // Date de reprise prévue
   dateRepriseEffective?: string; // Date réelle de reprise constatée
-  nombreJours: number;
+  nombreJours: number; // Jours ouvrables pour admin (hors WE et fériés), ou jours civils pour maladie/maternité
   etatDemande: EtatDemande;
   decisionRecue: StatutDecision;
   numeroDecision?: string; // Ex: "DEC-BO-2026/089"
   remplacantId?: string;
   motif?: string;
   observations?: string;
+  estMaladieDirecte?: boolean; // Saisie directe sans passage hiérarchique
+  statutPrevisionnel?: 'prevu_a_confirmer' | 'confirme_debut_mois' | 'annule'; // Pour planning annuel prévisionnel
+  moisPrevu?: string; // Ex: "2026-11"
 }
 
 export interface ReminderItem {
   id: string;
-  type: 'reprise_imminente' | 'reprise_retard' | 'cessation_imminente' | 'decision_manquante' | 'reliquat_eleve' | 'maladie_limite';
+  type: 'reprise_imminente' | 'reprise_retard' | 'cessation_imminente' | 'decision_manquante' | 'reliquat_eleve' | 'maladie_limite' | 'maternite_imminente';
   niveau: 'urgent' | 'attention' | 'info';
   titre: string;
   message: string;
   nurseId: string;
   demandeId?: string;
   dateCible: string;
-  actionPossible?: 'confirmer_reprise' | 'marquer_decision' | 'voir_agent';
+  actionPossible?: 'confirmer_reprise' | 'marquer_decision' | 'voir_agent' | 'confirmer_demande_debut_mois';
 }

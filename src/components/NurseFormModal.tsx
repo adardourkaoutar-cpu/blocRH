@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { X, Save, AlertCircle } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { X, Save, AlertCircle, Baby, Heart } from 'lucide-react';
 import { 
   NurseStaff, 
   Specialite, 
@@ -7,7 +7,8 @@ import {
   EtatMarital, 
   Grade, 
   EtatFonctionPublique, 
-  SituationActuelle 
+  SituationActuelle,
+  Sexe
 } from '../types/nurse';
 
 interface NurseFormModalProps {
@@ -24,6 +25,7 @@ const SPECIALITES: Specialite[] = [
 ];
 
 const FONCTIONS: Fonction[] = [
+  'Infirmier chef',
   'Anesthésiste',
   'Aide-opératoire',
   'Panseur',
@@ -31,11 +33,10 @@ const FONCTIONS: Fonction[] = [
 ];
 
 const GRADES: Grade[] = [
-  'Infirmier 2ème Grade',
-  'Infirmier 1er Grade',
-  'Infirmier Principal',
-  'Infirmier en Chef',
-  'Cadre Supérieur de Santé',
+  'Grade 1',
+  'Grade 2',
+  'Grade principal',
+  'Grade exceptionnel',
 ];
 
 const ETATS_FP: EtatFonctionPublique[] = [
@@ -51,6 +52,7 @@ const SITUATIONS: SituationActuelle[] = [
   'Système de garde',
   'Congé administratif',
   'Congé de maladie',
+  'Congé de maternité',
   'Congé exceptionnel',
   'Mis en disponibilité',
   'Sous drapeau',
@@ -66,6 +68,7 @@ export const NurseFormModal: React.FC<NurseFormModalProps> = ({
   // Form states
   const [nom, setNom] = useState(initialNurse?.nom || '');
   const [prenom, setPrenom] = useState(initialNurse?.prenom || '');
+  const [sexe, setSexe] = useState<Sexe>(initialNurse?.sexe || 'Femme');
   const [ppr, setPpr] = useState(initialNurse?.ppr || '');
   const [cni, setCni] = useState(initialNurse?.cni || '');
   const [specialite, setSpecialite] = useState<Specialite>(initialNurse?.specialite || 'IBO');
@@ -73,19 +76,26 @@ export const NurseFormModal: React.FC<NurseFormModalProps> = ({
   const [dateNaissance, setDateNaissance] = useState(initialNurse?.dateNaissance || '1992-01-01');
   const [lieuNaissance, setLieuNaissance] = useState(initialNurse?.lieuNaissance || 'Rabat');
   const [etatMarital, setEtatMarital] = useState<EtatMarital>(initialNurse?.etatMarital || 'Marié(e)');
+  
+  // Condition spécifique: Femme + Mariée -> Enceinte
+  const [enceinte, setEnceinte] = useState<boolean>(initialNurse?.enceinte || false);
+  const [matCessation, setMatCessation] = useState<string>(initialNurse?.congeMaternite?.dateCessation || '');
+  const [matReprise, setMatReprise] = useState<string>(initialNurse?.congeMaternite?.dateReprise || '');
+  const [matActif, setMatActif] = useState<boolean>(initialNurse?.congeMaternite?.actif || false);
+
   const [nombreEnfants, setNombreEnfants] = useState<number>(initialNurse?.nombreEnfants ?? 0);
-  const [grade, setGrade] = useState<Grade>(initialNurse?.grade || 'Infirmier 1er Grade');
+  const [grade, setGrade] = useState<Grade>(initialNurse?.grade || 'Grade 1');
   const [dateRecrutement, setDateRecrutement] = useState(initialNurse?.dateRecrutement || '2016-01-01');
   const [etatFonctionPublique, setEtatFonctionPublique] = useState<EtatFonctionPublique>(initialNurse?.etatFonctionPublique || 'Fonctionnaire Titulaire');
   const [lieuResidence, setLieuResidence] = useState(initialNurse?.lieuResidence || 'Rabat');
   const [navette, setNavette] = useState<boolean>(initialNurse?.navette || false);
   const [trajetNavette, setTrajetNavette] = useState(initialNurse?.trajetNavette || '');
   
-  // Congé admin
+  // Congé admin (22 jours ouvrables)
   const [reliquatReporte, setReliquatReporte] = useState<number>(initialNurse?.congeAdmin?.joursReportes ?? 0);
   const [joursConsommesAdmin, setJoursConsommesAdmin] = useState<number>(initialNurse?.congeAdmin?.joursConsommes ?? 0);
   
-  // Congé maladie
+  // Congé maladie (3 mois / 90 jours)
   const [joursConsommesMaladie, setJoursConsommesMaladie] = useState<number>(initialNurse?.congeMaladie?.joursConsommes ?? 0);
   
   // Situation actuelle & Contact
@@ -95,6 +105,30 @@ export const NurseFormModal: React.FC<NurseFormModalProps> = ({
 
   const [errorMsg, setErrorMsg] = useState('');
 
+  // Auto-calcul de la date de reprise pour le congé maternité (exactement 90 jours après la date de cessation)
+  useEffect(() => {
+    if (matCessation) {
+      const start = new Date(matCessation);
+      if (!isNaN(start.getTime())) {
+        const end = new Date(start);
+        end.setDate(end.getDate() + 90);
+        const y = end.getFullYear();
+        const m = String(end.getMonth() + 1).padStart(2, '0');
+        const d = String(end.getDate()).padStart(2, '0');
+        setMatReprise(`${y}-${m}-${d}`);
+      }
+    }
+  }, [matCessation]);
+
+  // Si situation change en 'Congé de maternité', activer le statut
+  useEffect(() => {
+    if (situationActuelle === 'Congé de maternité') {
+      setMatActif(true);
+    }
+  }, [situationActuelle]);
+
+  const isFemmeMariee = sexe === 'Femme' && etatMarital === 'Marié(e)';
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!nom.trim() || !prenom.trim() || !ppr.trim() || !cni.trim()) {
@@ -102,10 +136,13 @@ export const NurseFormModal: React.FC<NurseFormModalProps> = ({
       return;
     }
 
+    const hasMaternite = isFemmeMariee && enceinte && matCessation;
+
     const nurseData: NurseStaff = {
       id: initialNurse?.id || `nurse-${Date.now()}`,
       nom: nom.toUpperCase().trim(),
       prenom: prenom.trim(),
+      sexe,
       ppr: ppr.trim(),
       cni: cni.toUpperCase().trim(),
       specialite,
@@ -113,6 +150,13 @@ export const NurseFormModal: React.FC<NurseFormModalProps> = ({
       dateNaissance,
       lieuNaissance: lieuNaissance.trim(),
       etatMarital,
+      enceinte: isFemmeMariee ? enceinte : undefined,
+      congeMaternite: hasMaternite ? {
+        dateCessation: matCessation,
+        dateReprise: matReprise,
+        dureeJours: 90,
+        actif: matActif || situationActuelle === 'Congé de maternité'
+      } : undefined,
       nombreEnfants: Number(nombreEnfants) || 0,
       grade,
       dateRecrutement,
@@ -129,7 +173,7 @@ export const NurseFormModal: React.FC<NurseFormModalProps> = ({
         limiteAnnuelleMois: 3,
         joursConsommes: Number(joursConsommesMaladie) || 0,
       },
-      situationActuelle,
+      situationActuelle: (hasMaternite && matActif) ? 'Congé de maternité' : situationActuelle,
       email: email.trim() || undefined,
       notes: notes.trim() || undefined,
     };
@@ -169,7 +213,7 @@ export const NurseFormModal: React.FC<NurseFormModalProps> = ({
             </div>
           )}
 
-          {/* 1. Identification & État Civil */}
+          {/* 1. Identification, Sexe & État Civil */}
           <div className="space-y-3">
             <h3 className="font-bold text-slate-900 text-xs uppercase tracking-wider pb-1 border-b border-slate-100 text-teal-800">
               1. État Civil & Identifiants
@@ -198,6 +242,24 @@ export const NurseFormModal: React.FC<NurseFormModalProps> = ({
                   onChange={(e) => setPrenom(e.target.value)}
                   className="w-full px-3 py-1.5 border border-slate-300 rounded-md focus:ring-1 focus:ring-teal-500 focus:outline-none"
                 />
+              </div>
+
+              <div>
+                <label className="block font-medium text-slate-700 mb-1">Sexe (Genre) *</label>
+                <select
+                  value={sexe}
+                  onChange={(e) => {
+                    const newSexe = e.target.value as Sexe;
+                    setSexe(newSexe);
+                    if (newSexe !== 'Femme') {
+                      setEnceinte(false);
+                    }
+                  }}
+                  className="w-full px-3 py-1.5 border border-slate-300 rounded-md focus:ring-1 focus:ring-teal-500 focus:outline-none font-semibold text-slate-800"
+                >
+                  <option value="Femme">Femme</option>
+                  <option value="Homme">Homme</option>
+                </select>
               </div>
 
               <div>
@@ -250,8 +312,14 @@ export const NurseFormModal: React.FC<NurseFormModalProps> = ({
                 <label className="block font-medium text-slate-700 mb-1">État Marital</label>
                 <select
                   value={etatMarital}
-                  onChange={(e) => setEtatMarital(e.target.value as EtatMarital)}
-                  className="w-full px-3 py-1.5 border border-slate-300 rounded-md focus:ring-1 focus:ring-teal-500 focus:outline-none"
+                  onChange={(e) => {
+                    const newEtat = e.target.value as EtatMarital;
+                    setEtatMarital(newEtat);
+                    if (newEtat !== 'Marié(e)') {
+                      setEnceinte(false);
+                    }
+                  }}
+                  className="w-full px-3 py-1.5 border border-slate-300 rounded-md focus:ring-1 focus:ring-teal-500 focus:outline-none font-medium"
                 >
                   <option value="Célibataire">Célibataire</option>
                   <option value="Marié(e)">Marié(e)</option>
@@ -268,16 +336,89 @@ export const NurseFormModal: React.FC<NurseFormModalProps> = ({
                   max="15"
                   value={nombreEnfants}
                   onChange={(e) => setNombreEnfants(parseInt(e.target.value) || 0)}
-                  className="w-full px-3 py-1.5 border border-slate-300 rounded-md focus:ring-1 focus:ring-teal-500 focus:outline-none"
+                  className="w-full px-3 py-1.5 border border-slate-300 rounded-md focus:ring-1 focus:ring-teal-500 focus:outline-none font-mono"
                 />
               </div>
             </div>
+
+            {/* Condition: Si Femme + Mariée -> Case Enceinte & Congé de maternité */}
+            {isFemmeMariee && (
+              <div className="p-3.5 bg-rose-50/50 border border-rose-200 rounded-lg space-y-3 mt-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Baby className="w-4 h-4 text-rose-600" />
+                    <span className="font-bold text-rose-900 text-xs">Situation de Grossesse (Femme Mariée)</span>
+                  </div>
+                  
+                  <div className="flex items-center gap-3">
+                    <label className="flex items-center gap-1.5 cursor-pointer text-xs font-semibold text-slate-700">
+                      <input
+                        type="radio"
+                        name="enceinte"
+                        checked={enceinte === false}
+                        onChange={() => setEnceinte(false)}
+                        className="text-teal-600 focus:ring-teal-500"
+                      />
+                      <span>Non enceinte</span>
+                    </label>
+
+                    <label className="flex items-center gap-1.5 cursor-pointer text-xs font-semibold text-rose-800">
+                      <input
+                        type="radio"
+                        name="enceinte"
+                        checked={enceinte === true}
+                        onChange={() => setEnceinte(true)}
+                        className="text-rose-600 focus:ring-rose-500"
+                      />
+                      <span>Enceinte</span>
+                    </label>
+                  </div>
+                </div>
+
+                {/* Si Enceinte : Saisie du Congé de Maternité (90 jours) */}
+                {enceinte && (
+                  <div className="pt-2 border-t border-rose-200 grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                    <div>
+                      <label className="block font-semibold text-rose-900 mb-1">
+                        Date de Cessation (Départ Maternité) *
+                      </label>
+                      <input
+                        type="date"
+                        value={matCessation}
+                        onChange={(e) => setMatCessation(e.target.value)}
+                        className="w-full px-3 py-1.5 border border-rose-300 rounded-md bg-white focus:ring-1 focus:ring-rose-500 font-medium"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block font-semibold text-rose-900 mb-1">
+                        Date de Reprise (Calcul 90 jours) *
+                      </label>
+                      <input
+                        type="date"
+                        value={matReprise}
+                        onChange={(e) => setMatReprise(e.target.value)}
+                        className="w-full px-3 py-1.5 border border-rose-300 rounded-md bg-white focus:ring-1 focus:ring-rose-500 font-medium"
+                      />
+                    </div>
+
+                    <div className="flex flex-col justify-end">
+                      <div className="p-2 bg-white rounded border border-rose-200 text-center">
+                        <span className="text-[10px] text-rose-700 block uppercase font-bold">Durée statutaire</span>
+                        <span className="font-mono font-bold text-rose-900 text-xs">90 Jours</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
           </div>
 
           {/* 2. Rôle, Spécialité & Statut Fonction Publique */}
           <div className="space-y-3">
             <h3 className="font-bold text-slate-900 text-xs uppercase tracking-wider pb-1 border-b border-slate-100 text-teal-800">
-              2. Spécialité, Fonction & Statut Fonction Publique
+              2. Spécialité, Rôle dans le bloc & Statut Fonction Publique
             </h3>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
@@ -286,29 +427,29 @@ export const NurseFormModal: React.FC<NurseFormModalProps> = ({
                 <select
                   value={specialite}
                   onChange={(e) => setSpecialite(e.target.value as Specialite)}
-                  className="w-full px-3 py-1.5 border border-slate-300 rounded-md focus:ring-1 focus:ring-teal-500 focus:outline-none"
+                  className="w-full px-3 py-1.5 border border-slate-300 rounded-md focus:ring-1 focus:ring-teal-500 focus:outline-none font-semibold text-slate-800"
                 >
                   {SPECIALITES.map(s => <option key={s} value={s}>{s}</option>)}
                 </select>
               </div>
 
               <div>
-                <label className="block font-medium text-slate-700 mb-1">Fonction au Bloc *</label>
+                <label className="block font-medium text-slate-700 mb-1">Rôle / Fonction dans le bloc *</label>
                 <select
                   value={fonction}
                   onChange={(e) => setFonction(e.target.value as Fonction)}
-                  className="w-full px-3 py-1.5 border border-slate-300 rounded-md focus:ring-1 focus:ring-teal-500 focus:outline-none"
+                  className="w-full px-3 py-1.5 border border-slate-300 rounded-md focus:ring-1 focus:ring-teal-500 focus:outline-none font-semibold text-slate-800"
                 >
                   {FONCTIONS.map(f => <option key={f} value={f}>{f}</option>)}
                 </select>
               </div>
 
               <div>
-                <label className="block font-medium text-slate-700 mb-1">Grade Fonction Publique</label>
+                <label className="block font-medium text-slate-700 mb-1">Grade (Seulement 4 grades) *</label>
                 <select
                   value={grade}
                   onChange={(e) => setGrade(e.target.value as Grade)}
-                  className="w-full px-3 py-1.5 border border-slate-300 rounded-md focus:ring-1 focus:ring-teal-500 focus:outline-none"
+                  className="w-full px-3 py-1.5 border border-slate-300 rounded-md focus:ring-1 focus:ring-teal-500 focus:outline-none font-semibold text-teal-900"
                 >
                   {GRADES.map(g => <option key={g} value={g}>{g}</option>)}
                 </select>
@@ -321,12 +462,12 @@ export const NurseFormModal: React.FC<NurseFormModalProps> = ({
                   required
                   value={dateRecrutement}
                   onChange={(e) => setDateRecrutement(e.target.value)}
-                  className="w-full px-3 py-1.5 border border-slate-300 rounded-md focus:ring-1 focus:ring-teal-500 focus:outline-none"
+                  className="w-full px-3 py-1.5 border border-slate-300 rounded-md focus:ring-1 focus:ring-teal-500 focus:outline-none font-medium"
                 />
               </div>
 
               <div>
-                <label className="block font-medium text-slate-700 mb-1">Position Fonction Publique *</label>
+                <label className="block font-medium text-slate-700 mb-1">Position Statutaire *</label>
                 <select
                   value={etatFonctionPublique}
                   onChange={(e) => setEtatFonctionPublique(e.target.value as EtatFonctionPublique)}
@@ -411,7 +552,7 @@ export const NurseFormModal: React.FC<NurseFormModalProps> = ({
           {/* 4. Soldes & Compteurs de Congés */}
           <div className="space-y-3">
             <h3 className="font-bold text-slate-900 text-xs uppercase tracking-wider pb-1 border-b border-slate-100 text-teal-800">
-              4. Soldes de Congés (Admin & Maladie)
+              4. Compteurs & Report Statutaire des Congés
             </h3>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
@@ -423,7 +564,7 @@ export const NurseFormModal: React.FC<NurseFormModalProps> = ({
                   value={22}
                   className="w-full px-3 py-1 border border-slate-300 bg-slate-100 rounded-md font-mono tabular-nums text-slate-600"
                 />
-                <span className="text-[10px] text-slate-400">Limite statutaire : 22 jours/an</span>
+                <span className="text-[10px] text-slate-400">22 jours ouvrables (hors sam/dim et fériés)</span>
               </div>
 
               <div className="bg-slate-50 p-2.5 rounded border border-slate-200">
@@ -436,7 +577,7 @@ export const NurseFormModal: React.FC<NurseFormModalProps> = ({
                   onChange={(e) => setReliquatReporte(parseInt(e.target.value) || 0)}
                   className="w-full px-3 py-1 border border-slate-300 rounded-md font-mono tabular-nums focus:ring-1 focus:ring-teal-500"
                 />
-                <span className="text-[10px] text-slate-400">Report de l'année précédente</span>
+                <span className="text-[10px] text-teal-700 font-medium">Rajoutés au droit de l'année en cours</span>
               </div>
 
               <div className="bg-slate-50 p-2.5 rounded border border-slate-200">

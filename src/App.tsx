@@ -3,6 +3,7 @@ import { Header, ActiveTab } from './components/Header';
 import { DashboardView } from './components/DashboardView';
 import { NurseDirectoryView } from './components/NurseDirectoryView';
 import { LeavesManagementView } from './components/LeavesManagementView';
+import { CalendarPlanningView } from './components/CalendarPlanningView';
 import { RemindersCenterView } from './components/RemindersCenterView';
 import { NurseDetailModal } from './components/NurseDetailModal';
 import { NurseFormModal } from './components/NurseFormModal';
@@ -256,6 +257,45 @@ export default function App() {
     }
   };
 
+  const handleConfirmPlannedLeave = (demandeId: string) => {
+    setDemandes(prev => prev.map(d => {
+      if (d.id === demandeId) {
+        return {
+          ...d,
+          statutPrevisionnel: 'confirme_debut_mois',
+          etatDemande: 'Confirmé',
+        };
+      }
+      return d;
+    }));
+
+    const targetDemande = demandes.find(d => d.id === demandeId);
+    if (targetDemande) {
+      const today = '2026-10-24';
+      if (today >= targetDemande.dateCessation && today <= targetDemande.dateReprisePrevue) {
+        let newSituation: SituationActuelle = 'Congé administratif';
+        if (targetDemande.typeConge === 'Congé de Maladie') newSituation = 'Congé de maladie';
+        else if (targetDemande.typeConge.includes('Maternité')) newSituation = 'Congé de maternité';
+        else if (targetDemande.typeConge !== 'Congé Administratif') newSituation = 'Congé exceptionnel';
+
+        setNurses(prev => prev.map(n => n.id === targetDemande.nurseId ? { ...n, situationActuelle: newSituation } : n));
+      }
+    }
+  };
+
+  const handleCancelPlannedLeave = (demandeId: string) => {
+    setDemandes(prev => prev.map(d => {
+      if (d.id === demandeId) {
+        return {
+          ...d,
+          statutPrevisionnel: 'annule',
+          etatDemande: 'Refusé',
+        };
+      }
+      return d;
+    }));
+  };
+
   const handleFilterSituationFromDashboard = (situation: string) => {
     if (situation === 'Système normal') setDirectoryInitialFilter('normal');
     else if (situation === 'Système de garde') setDirectoryInitialFilter('garde');
@@ -335,6 +375,7 @@ export default function App() {
             onNavigateTab={(tab) => {
               if (tab === 'personnel') setActiveTab('personnel');
               else if (tab === 'conges') setActiveTab('conges');
+              else if (tab === 'calendrier') setActiveTab('calendrier');
               else if (tab === 'reminders') setActiveTab('reminders');
             }}
             onSelectNurse={(nurse) => setSelectedNurseForDetail(nurse)}
@@ -379,6 +420,20 @@ export default function App() {
             onUpdateDemande={handleUpdateDemande}
             onValidateReprise={handleValidateReprise}
             onPrintDoc={handlePrintDoc}
+          />
+        )}
+
+        {activeTab === 'calendrier' && (
+          <CalendarPlanningView
+            nurses={nurses}
+            demandes={demandes}
+            onConfirmPlannedLeave={handleConfirmPlannedLeave}
+            onCancelPlannedLeave={handleCancelPlannedLeave}
+            onNewLeave={() => {
+              setLeavePreselectedNurse(null);
+              setIsLeaveFormOpen(true);
+            }}
+            onSelectNurse={(nurse) => setSelectedNurseForDetail(nurse)}
           />
         )}
 

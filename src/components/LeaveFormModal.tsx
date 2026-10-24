@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { X, Calendar, AlertCircle, CheckCircle, Save } from 'lucide-react';
+import { X, Calendar, AlertCircle, CheckCircle, Save, ShieldCheck, Info } from 'lucide-react';
 import { DemandeConge, NurseStaff, TypeConge, EtatDemande, StatutDecision } from '../types/nurse';
-import { calculateDaysBetween, getSoldeCongeAdmin, getSoldeCongeMaladie } from '../utils/calculations';
+import { calculateLeaveDays, calculateDaysBetween, getSoldeCongeAdmin, getSoldeCongeMaladie } from '../utils/calculations';
 
 interface LeaveFormModalProps {
   nurses: NurseStaff[];
@@ -13,6 +13,7 @@ interface LeaveFormModalProps {
 const TYPES_CONGE: TypeConge[] = [
   'Congé Administratif',
   'Congé de Maladie',
+  'Congé de Maternité (90 jours)',
   'Congé Exceptionnel',
   'Maternité / Paternité',
   'Pèlerinage',
@@ -30,8 +31,8 @@ export const LeaveFormModal: React.FC<LeaveFormModalProps> = ({
   
   // Date default to current time
   const todayStr = '2026-10-24';
-  const tomorrowStr = '2026-10-25';
-  const nextWeekStr = '2026-11-03';
+  const tomorrowStr = '2026-10-26';
+  const nextWeekStr = '2026-11-06';
 
   const [dateDemande, setDateDemande] = useState(todayStr);
   const [dateCessation, setDateCessation] = useState(tomorrowStr);
@@ -44,6 +45,7 @@ export const LeaveFormModal: React.FC<LeaveFormModalProps> = ({
   const [remplacantId, setRemplacantId] = useState('');
   const [motif, setMotif] = useState('');
   const [observations, setObservations] = useState('');
+  const [statutPrevisionnel, setStatutPrevisionnel] = useState<'confirme_debut_mois' | 'prevu_a_confirmer'>('confirme_debut_mois');
   const [errorMsg, setErrorMsg] = useState('');
 
   // Active nurse selected
@@ -51,13 +53,45 @@ export const LeaveFormModal: React.FC<LeaveFormModalProps> = ({
   const soldeAdmin = currentNurse ? getSoldeCongeAdmin(currentNurse) : null;
   const soldeMaladie = currentNurse ? getSoldeCongeMaladie(currentNurse) : null;
 
-  // Auto calculate duration in days
+  // Lorsque l'utilisateur sélectionne 'Congé de Maladie' :
+  // "le congé maladie et automatiquement saisie avec date de cessation et date de congé sans l'obligation de passer par la voie hiérarchique et attendre la validation de la demande"
+  useEffect(() => {
+    if (typeConge === 'Congé de Maladie') {
+      setEtatDemande('Confirmé');
+      setDecisionRecue('Reçue et visée');
+      if (!numeroDecision) {
+        setNumeroDecision(`CM-${Date.now().toString().slice(-4)}`);
+      }
+    } else if (typeConge === 'Congé de Maternité (90 jours)') {
+      setEtatDemande('Confirmé');
+      setDecisionRecue('Reçue et visée');
+      // Calcul automatique 90 jours
+      if (dateCessation) {
+        const start = new Date(dateCessation);
+        if (!isNaN(start.getTime())) {
+          const end = new Date(start);
+          end.setDate(end.getDate() + 90);
+          const y = end.getFullYear();
+          const m = String(end.getMonth() + 1).padStart(2, '0');
+          const d = String(end.getDate()).padStart(2, '0');
+          setDateReprisePrevue(`${y}-${m}-${d}`);
+        }
+      }
+    }
+  }, [typeConge, dateCessation]);
+
+  // Auto-calcul de la durée :
+  // Pour le congé administratif : jours ouvrables stricts (hors samedis, dimanches et jours fériés au Maroc)
   useEffect(() => {
     if (dateCessation && dateReprisePrevue) {
-      const days = calculateDaysBetween(dateCessation, dateReprisePrevue);
-      setNombreJours(days > 0 ? days : 1);
+      if (typeConge === 'Congé de Maternité (90 jours)') {
+        setNombreJours(90);
+      } else {
+        const days = calculateLeaveDays(typeConge, dateCessation, dateReprisePrevue);
+        setNombreJours(days > 0 ? days : 1);
+      }
     }
-  }, [dateCessation, dateReprisePrevue]);
+  }, [dateCessation, dateReprisePrevue, typeConge]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -74,6 +108,9 @@ export const LeaveFormModal: React.FC<LeaveFormModalProps> = ({
       return;
     }
 
+    // Mois prévu pour le planning
+    const moisPrevu = dateCessation.substring(0, 7);
+
     const newDemande: DemandeConge = {
       id: `dem-${Date.now()}`,
       nurseId,
@@ -82,12 +119,15 @@ export const LeaveFormModal: React.FC<LeaveFormModalProps> = ({
       dateCessation,
       dateReprisePrevue,
       nombreJours,
-      etatDemande,
-      decisionRecue,
+      etatDemande: typeConge === 'Congé de Maladie' ? 'Confirmé' : etatDemande,
+      decisionRecue: typeConge === 'Congé de Maladie' ? 'Reçue et visée' : decisionRecue,
       numeroDecision: numeroDecision.trim() || undefined,
       remplacantId: remplacantId || undefined,
       motif: motif.trim() || undefined,
       observations: observations.trim() || undefined,
+      estMaladieDirecte: typeConge === 'Congé de Maladie',
+      statutPrevisionnel,
+      moisPrevu
     };
 
     onSave(newDemande);
@@ -101,10 +141,10 @@ export const LeaveFormModal: React.FC<LeaveFormModalProps> = ({
         <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50/80">
           <div>
             <h2 className="text-base font-bold text-slate-900">
-              Déclaration / Demande de Congé & Cessation de Service
+              Déclaration / Demande de Congé & Mouvements
             </h2>
             <p className="text-xs text-slate-500">
-              Service du Bloc Opératoire · Enregistrement administratif
+              Service du Bloc Opératoire · Enregistrement administratif & planning
             </p>
           </div>
           <button
@@ -137,7 +177,7 @@ export const LeaveFormModal: React.FC<LeaveFormModalProps> = ({
             >
               {nurses.map(n => (
                 <option key={n.id} value={n.id}>
-                  {n.nom} {n.prenom} (PPR: {n.ppr}) · {n.specialite} — {n.situationActuelle}
+                  {n.nom} {n.prenom} ({n.sexe}) · {n.specialite} ({n.fonction}) — PPR: {n.ppr}
                 </option>
               ))}
             </select>
@@ -149,18 +189,23 @@ export const LeaveFormModal: React.FC<LeaveFormModalProps> = ({
               <div>
                 <span className="font-semibold text-slate-800">{currentNurse.nom} {currentNurse.prenom}</span>
                 <span className="text-slate-500 ml-1">({currentNurse.grade})</span>
+                {currentNurse.enceinte && (
+                  <span className="ml-2 px-2 py-0.5 bg-rose-100 text-rose-800 rounded text-[10px] font-semibold">
+                    Enceinte
+                  </span>
+                )}
               </div>
               <div className="flex items-center gap-4">
                 <div className="text-right">
-                  <div className="text-[10px] text-slate-500">Solde Admin Restant</div>
+                  <div className="text-[10px] text-slate-500">Solde Admin (Ouvrables)</div>
                   <div className="font-bold text-teal-800 font-mono tabular-nums">
-                    {soldeAdmin.restant} jours / {soldeAdmin.totalAcquis}j
+                    {soldeAdmin.restant}j / {soldeAdmin.totalAcquis}j
                   </div>
                 </div>
                 <div className="text-right border-l border-slate-200 pl-4">
-                  <div className="text-[10px] text-slate-500">Solde Maladie Restant</div>
+                  <div className="text-[10px] text-slate-500">Solde Maladie (3 mois)</div>
                   <div className="font-bold text-rose-800 font-mono tabular-nums">
-                    {soldeMaladie.restant} jours / 90j
+                    {soldeMaladie.restant}j / 90j
                   </div>
                 </div>
               </div>
@@ -184,7 +229,7 @@ export const LeaveFormModal: React.FC<LeaveFormModalProps> = ({
 
             <div>
               <label className="block font-semibold text-slate-700 mb-1">
-                Date de Dépôt de Demande *
+                Date d'Enregistrement *
               </label>
               <input
                 type="date"
@@ -195,6 +240,39 @@ export const LeaveFormModal: React.FC<LeaveFormModalProps> = ({
               />
             </div>
           </div>
+
+          {/* Spécificité Congé Administratif : Explication Jours Ouvrables */}
+          {typeConge === 'Congé Administratif' && (
+            <div className="p-2.5 bg-teal-50/70 border border-teal-200 rounded-md text-[11px] text-teal-900 flex items-start gap-2">
+              <Info className="w-4 h-4 text-teal-700 shrink-0 mt-0.5" />
+              <div>
+                <strong>Calcul statutaire strict : </strong>
+                Le congé administratif de 22 jours/an décompte <em>exclusivement les jours ouvrables</em>. Les samedis, dimanches et jours fériés officiels au Maroc sont automatiquement exclus du décompte. Les jours non consommés sont reportés sur l'année suivante.
+              </div>
+            </div>
+          )}
+
+          {/* Spécificité Congé de Maladie : Saisie directe sans passage hiérarchique */}
+          {typeConge === 'Congé de Maladie' && (
+            <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-md text-[11px] text-amber-900 flex items-start gap-2">
+              <ShieldCheck className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
+              <div>
+                <strong>Saisie directe sans voie hiérarchique : </strong>
+                Le congé de maladie est automatiquement validé dès la saisie des dates de cessation et de reprise, sans obligation d'attendre une validation hiérarchique préalable.
+              </div>
+            </div>
+          )}
+
+          {/* Spécificité Maternité : 90 jours statutaires */}
+          {typeConge === 'Congé de Maternité (90 jours)' && (
+            <div className="p-2.5 bg-rose-50 border border-rose-200 rounded-md text-[11px] text-rose-900 flex items-start gap-2">
+              <Info className="w-4 h-4 text-rose-700 shrink-0 mt-0.5" />
+              <div>
+                <strong>Congé de Maternité Statutaire : </strong>
+                Durée fixée à <strong>90 jours</strong>. La date de reprise a été automatiquement calculée à partir de la date de cessation de service.
+              </div>
+            </div>
+          )}
 
           {/* 3. Dates de Cessation et Reprise */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-teal-50/40 p-3 rounded-lg border border-teal-100">
@@ -223,12 +301,12 @@ export const LeaveFormModal: React.FC<LeaveFormModalProps> = ({
                 onChange={(e) => setDateReprisePrevue(e.target.value)}
                 className="w-full px-3 py-1.5 border border-teal-300 rounded-md bg-white focus:ring-1 focus:ring-teal-500 focus:outline-none font-medium"
               />
-              <span className="text-[10px] text-teal-700">Jour effectif de retour au bloc</span>
+              <span className="text-[10px] text-teal-700">Jour de retour au bloc</span>
             </div>
 
             <div>
               <label className="block font-semibold text-teal-900 mb-1">
-                Durée (Jours demandés)
+                {typeConge === 'Congé Administratif' ? 'Jours Ouvrables Décomptés' : 'Nombre de Jours'}
               </label>
               <input
                 type="number"
@@ -237,20 +315,56 @@ export const LeaveFormModal: React.FC<LeaveFormModalProps> = ({
                 onChange={(e) => setNombreJours(parseInt(e.target.value) || 1)}
                 className="w-full px-3 py-1.5 border border-teal-300 rounded-md bg-white font-mono font-bold tabular-nums text-slate-900"
               />
-              <span className="text-[10px] text-teal-700">Calcul automatique</span>
+              <span className="text-[10px] text-teal-700">
+                {typeConge === 'Congé Administratif' ? 'Hors WE & fériés marocains' : 'Calcul automatique'}
+              </span>
             </div>
           </div>
 
-          {/* 4. États & Décision Administrative */}
+          {/* 4. Planification Annuelle / Début de Mois */}
+          <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-2">
+            <label className="block font-semibold text-slate-800">
+              Nature de la demande dans le planning annuel :
+            </label>
+            <div className="flex items-center gap-4">
+              <label className="flex items-center gap-1.5 cursor-pointer">
+                <input
+                  type="radio"
+                  name="statutPrevisionnel"
+                  checked={statutPrevisionnel === 'confirme_debut_mois'}
+                  onChange={() => setStatutPrevisionnel('confirme_debut_mois')}
+                  className="text-teal-600 focus:ring-teal-500"
+                />
+                <span>Demande effective immédiate</span>
+              </label>
+
+              <label className="flex items-center gap-1.5 cursor-pointer">
+                <input
+                  type="radio"
+                  name="statutPrevisionnel"
+                  checked={statutPrevisionnel === 'prevu_a_confirmer'}
+                  onChange={() => setStatutPrevisionnel('prevu_a_confirmer')}
+                  className="text-amber-600 focus:ring-amber-500"
+                />
+                <span>Congé prévisionnel (à confirmer au début du mois)</span>
+              </label>
+            </div>
+            <p className="text-[10px] text-slate-500">
+              Au début de chaque mois, les congés prévisionnels sont soumis à confirmation ou annulation avant passage en procédure.
+            </p>
+          </div>
+
+          {/* 5. États & Décision Administrative (Désactivé si Maladie car validation directe) */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
               <label className="block font-semibold text-slate-700 mb-1">
                 État de la Demande *
               </label>
               <select
-                value={etatDemande}
+                disabled={typeConge === 'Congé de Maladie'}
+                value={typeConge === 'Congé de Maladie' ? 'Confirmé' : etatDemande}
                 onChange={(e) => setEtatDemande(e.target.value as EtatDemande)}
-                className="w-full px-3 py-1.5 border border-slate-300 rounded-md focus:ring-1 focus:ring-teal-500 focus:outline-none font-semibold text-teal-900"
+                className="w-full px-3 py-1.5 border border-slate-300 rounded-md focus:ring-1 focus:ring-teal-500 focus:outline-none font-semibold text-teal-900 disabled:bg-slate-100"
               >
                 <option value="En attente">En attente</option>
                 <option value="Confirmé">Confirmé (Accordé)</option>
@@ -263,9 +377,10 @@ export const LeaveFormModal: React.FC<LeaveFormModalProps> = ({
                 Statut Décision Administrative
               </label>
               <select
-                value={decisionRecue}
+                disabled={typeConge === 'Congé de Maladie'}
+                value={typeConge === 'Congé de Maladie' ? 'Reçue et visée' : decisionRecue}
                 onChange={(e) => setDecisionRecue(e.target.value as StatutDecision)}
-                className="w-full px-3 py-1.5 border border-slate-300 rounded-md focus:ring-1 focus:ring-teal-500 focus:outline-none"
+                className="w-full px-3 py-1.5 border border-slate-300 rounded-md focus:ring-1 focus:ring-teal-500 focus:outline-none disabled:bg-slate-100"
               >
                 <option value="Non reçue">Non reçue</option>
                 <option value="En cours de visa">En cours de visa / DRH</option>
@@ -287,11 +402,11 @@ export const LeaveFormModal: React.FC<LeaveFormModalProps> = ({
             </div>
           </div>
 
-          {/* 5. Remplaçant au bloc & Motif */}
+          {/* Remplaçant au bloc & Motif */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block font-semibold text-slate-700 mb-1">
-                Remplaçant proposé au bloc (optionnel)
+                Remplaçant proposé (optionnel)
               </label>
               <select
                 value={remplacantId}
@@ -301,7 +416,7 @@ export const LeaveFormModal: React.FC<LeaveFormModalProps> = ({
                 <option value="">-- Aucun remplaçant spécifique --</option>
                 {nurses.filter(n => n.id !== nurseId).map(n => (
                   <option key={n.id} value={n.id}>
-                    {n.nom} {n.prenom} ({n.specialite})
+                    {n.nom} {n.prenom} ({n.specialite} · {n.fonction})
                   </option>
                 ))}
               </select>
@@ -313,7 +428,7 @@ export const LeaveFormModal: React.FC<LeaveFormModalProps> = ({
               </label>
               <input
                 type="text"
-                placeholder="Ex: Congé annuel d'automne, certificat médical n°..."
+                placeholder="Ex: Congé annuel 2026, certificat médical n°..."
                 value={motif}
                 onChange={(e) => setMotif(e.target.value)}
                 className="w-full px-3 py-1.5 border border-slate-300 rounded-md focus:ring-1 focus:ring-teal-500 focus:outline-none"
@@ -323,11 +438,11 @@ export const LeaveFormModal: React.FC<LeaveFormModalProps> = ({
 
           <div>
             <label className="block font-semibold text-slate-700 mb-1">
-              Observations de la Major / Chef de service
+              Observations administratives
             </label>
             <textarea
               rows={2}
-              placeholder="Avis favorable, aménagement du roulement de garde nécessaire..."
+              placeholder="Observations..."
               value={observations}
               onChange={(e) => setObservations(e.target.value)}
               className="w-full px-3 py-1.5 border border-slate-300 rounded-md focus:ring-1 focus:ring-teal-500 focus:outline-none"

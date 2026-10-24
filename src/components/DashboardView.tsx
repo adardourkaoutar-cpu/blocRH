@@ -22,7 +22,7 @@ interface DashboardViewProps {
   nurses: NurseStaff[];
   demandes: DemandeConge[];
   reminders: ReminderItem[];
-  onNavigateTab: (tab: 'personnel' | 'conges' | 'reminders') => void;
+  onNavigateTab: (tab: 'personnel' | 'conges' | 'reminders' | 'calendrier') => void;
   onSelectNurse: (nurse: NurseStaff) => void;
   onValidateReprise: (demandeId: string, nurseId: string) => void;
   onFilterSituation: (situation: string) => void;
@@ -59,7 +59,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const ism = nurses.filter(n => n.specialite === 'ISM').length;
   const ibo = nurses.filter(n => n.specialite === 'IBO').length;
 
-  // Fonctions au bloc (Anesthésiste, Aide-opératoire, Panseur, Stérilisation)
+  // Fonctions au bloc (Infirmier chef, Anesthésiste, Aide-opératoire, Panseur, Stérilisation)
+  const fnChef = nurses.filter(n => n.fonction === 'Infirmier chef').length;
   const fnAnesthesiste = nurses.filter(n => n.fonction === 'Anesthésiste').length;
   const fnAideOp = nurses.filter(n => n.fonction === 'Aide-opératoire').length;
   const fnPanseur = nurses.filter(n => n.fonction === 'Panseur').length;
@@ -378,6 +379,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               Fonctions au Bloc
             </div>
             <div className="grid grid-cols-2 gap-2 text-xs text-slate-600">
+              <div className="col-span-2 bg-teal-50/70 p-2 rounded border border-teal-200 flex items-center justify-between">
+                <div className="text-teal-900 font-medium">Infirmier chef</div>
+                <div className="font-semibold text-teal-950 tabular-nums font-mono">{fnChef}</div>
+              </div>
               <div className="bg-slate-50 p-2 rounded border border-slate-100">
                 <div className="text-slate-500">Anesthésiste</div>
                 <div className="font-semibold text-slate-900 tabular-nums font-mono">{fnAnesthesiste}</div>
